@@ -824,19 +824,29 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 		scs_float * vsave = w->v;
 		/*u_t is overwritten in projectLinSys*/
 		for (j = 0; j < 30; j++) {
-			/* Save future result to r */
-			w->u_t = w->r;
 			/* Solve the system with u + v_prev on RHS */
 			w->v = w->v_prev;
+			/* Save future result to r */
+			w->u_t = w->r;
 			if (projectLinSys(w, i) < 0) {
 				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys in Linesearch", "Failure");
 			}
 
+			/* Use v_b as temp storage */
+			w->u = w->v_b;
+			memcpy(w->u, w->v_prev, (w->n + w->m + 1) * sizeof(scs_float));
+			scaleArray(w->u, -1, (w->n + w->m + 1));
+			/* Use v_b as temp storage */
+			w->u = w->v_b;
+			memcpy(w->u, w->v_prev, (w->n + w->m + 1) * sizeof(scs_float));
+			scaleArray(w->u, -1, (w->n + w->m + 1));
+			/* Solve the system with v + ( - v_prev ) on RHS */
+			w->v = vsave;
 			/* Save future result to s */
 			w->u_t = w->s;
-
-			/* Use v_b, p_b,  as temp storage */
-			memcpy(w->v_b, w->u, (w->n + w->m + 1) * sizeof(scs_float));
+			if (projectLinSys(w, i) < 0) {
+				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys in Linesearch", "Failure");
+			}
 			memset(w->p_b, 0, (w->n + w->m + 1) * sizeof(scs_float));
 		}
 
