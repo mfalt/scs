@@ -51,6 +51,18 @@ static void freeWork(Work * w) {
         scs_free(w->pr);
     if (w->dr)
         scs_free(w->dr);
+		if (w->r)
+				scs_free(w->r);
+		if (w->s)
+				scs_free(w->s);
+		if (w->u_b)
+				scs_free(w->u_b);
+		if (w->v_b)
+				scs_free(w->v_b);
+		if (w->p_b)
+				scs_free(w->p_b);
+		if (w->v_prev)
+				scs_free(w->v_prev);
     if (w->scal) {
         if (w->scal->D)
             scs_free(w->scal->D);
@@ -685,6 +697,12 @@ static Work * initWork(const Data *d, const Cone * k) {
 	w->dr = scs_malloc(d->n * sizeof(scs_float));
 	w->b = scs_malloc(d->m * sizeof(scs_float));
 	w->c = scs_malloc(d->n * sizeof(scs_float));
+	w->r = scs_malloc(l * sizeof(scs_float));
+	w->s = scs_malloc(l * sizeof(scs_float));
+	w->u_b = scs_malloc(l * sizeof(scs_float));
+	w->v_b = scs_malloc(l * sizeof(scs_float));
+	w->p_b = scs_malloc(l * sizeof(scs_float));
+	w->v_prev = scs_malloc(l * sizeof(scs_float));
 	if (!w->u || !w->v || !w->u_t || !w->u_prev || !w->h || !w->g || !w->pr || !w->dr || !w->b || !w->c) {
 		scs_printf("ERROR: work memory allocation failure\n");
 		RETURN SCS_NULL;
@@ -765,6 +783,7 @@ static scs_int updateWork(const Data * d, Work * w, const Sol * sol) {
 scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * info) {
     DEBUG_FUNC
 	scs_int i;
+	scs_int j;
 	timer solveTimer;
 	struct residuals r;
 	if (!d || !k || !sol || !info || !w || !d->b || !d->c) {
@@ -792,6 +811,34 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
         }
 
 		updateDualVars(w);
+
+		scs_float t = 1.0;
+		scs_float tBest = 1.0;
+		scs_float normBest = INFINITY;
+		/*u_t is overwritten in projectLinSys, using u and v*/
+		/*u is overwritten in projectCones, using u_t, v, u_prev*/
+		/*v is overwritten in updateDualVars, using u, u_t, u_prev */
+		/*Backup u_t, u, v*/
+		scs_float * u_tsave = w->u_t;
+		scs_float * usave = w->u;
+		scs_float * vsave = w->v;
+		/*u_t is overwritten in projectLinSys*/
+		for (j = 0; j < 30; j++) {
+			/* Save future result to r */
+			w->u_t = w->r;
+			/* Solve the system with u + v_prev on RHS */
+			w->v = w->v_prev;
+			if (projectLinSys(w, i) < 0) {
+				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys in Linesearch", "Failure");
+			}
+
+			/* Save future result to s */
+			w->u_t = w->s;
+
+			/* Use v_b, p_b,  as temp storage */
+			memcpy(w->v_b, w->u, (w->n + w->m + 1) * sizeof(scs_float));
+			memset(w->p_b, 0, (w->n + w->m + 1) * sizeof(scs_float));
+		}
 
 		if (isInterrupted()) {
 			RETURN failure(w, w->m, w->n, sol, info, SCS_SIGINT, "Interrupted", "Interrupted");
