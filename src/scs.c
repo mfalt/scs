@@ -784,6 +784,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
     DEBUG_FUNC
 	scs_int i;
 	scs_int j;
+	scs_int x;
 	timer solveTimer;
 	struct residuals r;
 	if (!d || !k || !sol || !info || !w || !d->b || !d->c) {
@@ -815,6 +816,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 		scs_float t = 1.0;
 		scs_float tBest = 1.0;
 		scs_float normBest = INFINITY;
+		scs_float normTest = 0.;
 		/*u_t is overwritten in projectLinSys, using u and v*/
 		/*u is overwritten in projectCones, using u_t, v, u_prev*/
 		/*v is overwritten in updateDualVars, using u, u_t, u_prev */
@@ -822,8 +824,8 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 		scs_float * u_tsave = w->u_t;
 		scs_float * usave = w->u;
 		scs_float * vsave = w->v;
-		/*u_t is overwritten in projectLinSys*/
-		for (j = 0; j < 30; j++) {
+
+		/* CALCULATE a/r */
 			/* Solve the system with u + v_prev on RHS */
 			w->v = w->v_prev;
 			/* Save future result to r */
@@ -831,11 +833,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 			if (projectLinSys(w, i) < 0) {
 				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys in Linesearch", "Failure");
 			}
-
-			/* Use v_b as temp storage */
-			w->u = w->v_b;
-			memcpy(w->u, w->v_prev, (w->n + w->m + 1) * sizeof(scs_float));
-			scaleArray(w->u, -1, (w->n + w->m + 1));
+		/* CALCULATE b/s */
 			/* Use v_b as temp storage */
 			w->u = w->v_b;
 			memcpy(w->u, w->v_prev, (w->n + w->m + 1) * sizeof(scs_float));
@@ -845,9 +843,63 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 			/* Save future result to s */
 			w->u_t = w->s;
 			if (projectLinSys(w, i) < 0) {
-				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys in Linesearch", "Failure");
+				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys in Line search", "Failure");
 			}
-			memset(w->p_b, 0, (w->n + w->m + 1) * sizeof(scs_float));
+
+		scs_int maxLs = 4;
+		for (j = 0; j < maxLs; j++) {
+			t = t;
+			/* SET u_b = r + t*s */
+				memcpy(w->u_b, w->r, (w->n + w->m + 1) * sizeof(scs_float));
+				addScaledArray(w->u_b, w->s, w->n + w->m + 1, t);
+			/* SET v_b = v_prev + t*( v - v_prev ) */
+				memcpy(w->v_b, w->v_prev, (w->n + w->m + 1) * sizeof(scs_float));
+				addScaledArray(w->v_b, w->v, w->n + w->m + 1, t);
+				addScaledArray(w->v_b, w->v_prev, w->n + w->m + 1, -t);
+				printArray(w->v_b,5,"v_b");
+			/* SET p_b = procect(u_b) , using u=project(u_t-v)*/
+				w->u = w->p_b;
+				w->u_t = w->u_b;
+				memset(w->p_b, 0, (w->n + w->m + 1) * sizeof(scs_float));
+				w->v = w->p_b;
+				if (projectCones(w, k, i) < 0) {
+					RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectCones in Line search", "Failure");
+		    }
+			/* CALCULATE norm */
+				normTest = 0.0;
+				for (x = 0; x < w->n + w->m + 1; ++x) {
+					/* THIS IS ONLY THE FIRST PART */
+					normTest += (w->v_b[x] - w->u_b[x] + w->p_b[x])*(w->v_b[x] - w->u_b[x] + w->p_b[x]);
+				}
+
+			scs_printf("normTest: %1.6e\n", normTest);
+			if ( j == 0 ) {
+				normBest = normTest*(1-0.00001);
+				w->u_t = u_tsave;
+				w->u = usave;
+				w->v = vsave;
+			} else {
+				/* Only one jump try */
+				if ( normTest < normBest ) {
+					normBest = normTest;
+					tBest = t;
+					w->u_t = u_tsave;
+					w->u = usave;
+					w->v = vsave;
+					memcpy(w->v, w->v_b, (w->n + w->m + 1) * sizeof(scs_float));
+					break;
+				} else if ( j == maxLs -1 ) {
+					scs_printf("normTest reached itr\n");
+					w->u_t = u_tsave;
+					w->u = usave;
+					w->v = vsave;
+					break;
+				} else {
+					w->u_t = u_tsave;
+					w->u = usave;
+					w->v = vsave;
+				}
+			}
 		}
 
 		if (isInterrupted()) {
