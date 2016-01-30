@@ -42,6 +42,7 @@ struct SCS_SETTINGS {
 	scs_float cg_rate; /* for indirect, tolerance goes down like (1/iter)^cg_rate: 2 */
 	scs_int verbose; /* boolean, write out progress: 1 */
 	scs_int warm_start; /* boolean, warm start (put initial guess in Sol struct): 0 */
+	scs_int line_search;
 };
 
 /* contains primal-dual solution arrays */
