@@ -803,6 +803,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 	/* scs: */
 	for (i = 0; i < w->stgs->max_iters; ++i) {
 		memcpy(w->u_prev, w->u, (w->n + w->m + 1) * sizeof(scs_float));
+		memcpy(w->v_prev, w->v, (w->n + w->m + 1) * sizeof(scs_float));
 
 		if (projectLinSys(w, i) < 0) {
 			RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys", "Failure");
@@ -847,8 +848,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 			}
 
 		scs_int maxLs = 4;
-		for (j = 0; j < maxLs; j++) {
-			t = t;
+		for (j = 0; j < maxLs; ++j) {
 			/* SET u_b = r + t*s */
 				memcpy(w->u_b, w->r, (w->n + w->m + 1) * sizeof(scs_float));
 				addScaledArray(w->u_b, w->s, w->n + w->m + 1, t);
@@ -856,7 +856,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 				memcpy(w->v_b, w->v_prev, (w->n + w->m + 1) * sizeof(scs_float));
 				addScaledArray(w->v_b, w->v, w->n + w->m + 1, t);
 				addScaledArray(w->v_b, w->v_prev, w->n + w->m + 1, -t);
-				printArray(w->v_b,5,"v_b");
+				//printArray(w->v_b,5,"v_b");
 			/* SET p_b = procect(u_b) , using u=project(u_t-v)*/
 				w->u = w->p_b;
 				w->u_t = w->u_b;
@@ -871,8 +871,12 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 					/* THIS IS ONLY THE FIRST PART */
 					normTest += (w->v_b[x] - w->u_b[x] + w->p_b[x])*(w->v_b[x] - w->u_b[x] + w->p_b[x]);
 				}
-
-			scs_printf("normTest: %1.6e\n", normTest);
+				for (x = 0; x < w->n + w->m + 1; ++x) {
+					/* THIS IS THE SECOND PART */
+					normTest += (w->p_b[x]-usave[x])*(w->p_b[x]-usave[x]);
+				}
+				
+			scs_printf("norm %1.2e: %1.2e ", t, normTest);
 			if ( j == 0 ) {
 				normBest = normTest*(1-0.00001);
 				w->u_t = u_tsave;
@@ -881,6 +885,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 			} else {
 				/* Only one jump try */
 				if ( normTest < normBest ) {
+					scs_printf("JUMPING\n");
 					normBest = normTest;
 					tBest = t;
 					w->u_t = u_tsave;
@@ -889,7 +894,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 					memcpy(w->v, w->v_b, (w->n + w->m + 1) * sizeof(scs_float));
 					break;
 				} else if ( j == maxLs -1 ) {
-					scs_printf("normTest reached itr\n");
+					scs_printf("norm reached itr\n");
 					w->u_t = u_tsave;
 					w->u = usave;
 					w->v = vsave;
@@ -900,6 +905,7 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 					w->v = vsave;
 				}
 			}
+			t = t*2;
 		}
 
 		if (isInterrupted()) {
