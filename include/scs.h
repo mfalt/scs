@@ -91,7 +91,8 @@ const char * scs_version(void);
 /* workspace for SCS */
 struct SCS_WORK {
 	scs_float *u, *v, *u_t, *u_prev; /* u_prev = u from previous iteration */
-	scs_float *r, *s, *u_b, *v_b, *p_b, *v_prev;
+	scs_float *u_h, *d;
+	scs_float *u_b, *v_b, *u_tb, *u_hb;
 	scs_float *h, *g, *pr, *dr;
 	scs_float gTh, sc_b, sc_c, nm_b, nm_c;
 	scs_float *b, *c; /* (possibly normalized) b and c vectors */
@@ -121,4 +122,3 @@ struct residuals {
 }
 #endif
 #endif
-
