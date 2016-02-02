@@ -811,6 +811,7 @@ static scs_int projectConesTo(Work * w, const Cone * k, scs_float * vec, scs_int
 }
 
 scs_int getLineSearchDirection(Work * w,  scs_int iter) {
+		DEBUG_FUNC
 	scs_int i, status;
 	scs_int l = w->n + w->m + 1;
 	for (i = 0; i < l; ++i) {
@@ -818,6 +819,7 @@ scs_int getLineSearchDirection(Work * w,  scs_int iter) {
 	}
 	status = projectLinSysTo(w, w->d, iter);
 	/* d = alpha*d + ( 1-alpha )( u_h - u ) */
+	/* TODO Only scale some parts of d */
 	scaleArray(w->d, w->stgs->alpha, l);
 	addScaledArray(w->d, w->u_h, l, (1 - w->stgs->alpha));
 	addScaledArray(w->d, w->u, l, - (1 - w->stgs->alpha));
@@ -825,6 +827,7 @@ scs_int getLineSearchDirection(Work * w,  scs_int iter) {
 }
 
 scs_float tryLineStep(Work * w, const Cone * k, scs_float t, scs_int iter) {
+		DEBUG_FUNC
 	scs_int l = w->n + w->m + 1;
 	scs_int i;
 	scs_float norm = 0.0;
@@ -898,7 +901,7 @@ scs_int scs_lineSearch(Work * w,  scs_int iter, const Cone * k, Sol * sol, Info 
 			memcpy(w->u_h, w->u_hb, l * sizeof(scs_float));
 			memcpy(w->u, w->u_b, l * sizeof(scs_float));
 			memcpy(w->v, w->v_b, l * sizeof(scs_float));
-			tryLineStep(w, k, t, iter);
+			tryLineStep(w, k, 1.0, iter);
 		}
 		t = t*2;
 	}
