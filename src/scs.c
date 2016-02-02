@@ -828,16 +828,16 @@ scs_float tryLineStep(Work * w, const Cone * k, scs_float t, scs_int iter) {
 	scs_int l = w->n + w->m + 1;
 	scs_int i;
 	scs_float norm = 0.0;
-	/* u_t = u_h + t*d */
-	memcpy(w->u_t, w->u_h, l * sizeof(scs_float));
-	addScaledArray(w->u_t, w->d, l, t);
-	/* v = v + t*( u_h - u_t) */
-	addScaledArray(w->v, w->u_h, l, t);
-	addScaledArray(w->v, w->u_t, l, -t);
 	/* u = u + t*( u_h - u) */
 	addScaledArray(w->u, w->u_h, l, t);
 	addScaledArray(w->u, w->u, l, -t);
-	/* u_h = coneProj( u_h - v ) */
+	/* v = v + t*( u_h - u_t) */
+	addScaledArray(w->v, w->u_h, l, t);
+	addScaledArray(w->v, w->u_t, l, -t);
+	/* u_t = u_t + t*d */
+	addScaledArray(w->u_t, w->d, l, t);
+	/* u_h = coneProj( u_t - v ) */
+	memcpy(w->u_h, w->u_t, l * sizeof(scs_float));
 	addScaledArray(w->u_h, w->v, l, -1.0);
 	if (projectConesTo(w, k, w->u_h, iter) < 0) {
 		/* TODO Figure out failure handling
