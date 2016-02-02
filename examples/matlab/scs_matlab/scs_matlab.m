@@ -1,4 +1,4 @@
-function [x,y,s,info] = scs_matlab(data,K,params)
+function [x,y,s,info,stats] = scs_matlab(data,K,params)
 % cone solver, solves:
 %
 % min. c'x
@@ -62,6 +62,7 @@ if nargin==3
     if isfield(params,'normalize');normalize = params.normalize;end
     if isfield(params,'scale');scale = params.scale;end
     if isfield(params,'rho_x');rho_x = params.rho_x;end
+    if isfield(params,'line_search');line_search = params.line_search;end
     % CG:
     if isfield(params,'use_indirect');use_indirect = params.use_indirect;end
     if isfield(params,'cg_rate');cg_rate = params.cg_rate;end
@@ -142,29 +143,145 @@ u_bar = u;
 ut_bar = u;
 v_bar = v;
 
+debugT = 6;
+stats = struct();
+stats.uts = zeros(debugT,l);
+stats.us = zeros(debugT,l);
+stats.vs = zeros(debugT,l);
+if line_search
+    stats.u_hs = zeros(debugT,l);
+    stats.ds = zeros(debugT,l);
+end
 tic
 for i=0:max_iters-1
-    % solve linear system
-    u_prev = u;
-    ut = u+v;
-    ut(1:n) = rho_x*ut(1:n);
-    ut(1:n+m) = ut(1:n+m) - ut(end)*h;
-    ut(1:n+m) = ut(1:n+m) - h*((g'*ut(1:n+m))/(gTh+1));
-    warm_start = u(1:n+m);
-    ut(n+1:end-1) = -ut(n+1:end-1);
-    [ut(1:n+m), itn] = solve_lin_sys(work, data, ut(1:n+m), n, m, warm_start, rho_x, i, use_indirect, cg_rate, extra_verbose);
-    ut(end) = (ut(end) + h'*ut(1:n+m));
-    
-    %% K proj:
-    rel_ut = alpha*ut+(1-alpha)*u;
-    rel_ut(1:n) = ut(1:n); % don't relax 'x' variable
-    u = rel_ut - v;
-    u(n+1:n+m) = proj_dual_cone(u(n+1:n+m),K);
-    u(l) = max(u(l),0);
-    
-    %% dual update:
-    v = v + (u - rel_ut);
-    
+    if (i == 0 || ~line_search)
+        
+        if line_search
+            uold = u;
+        end
+        % solve linear system
+        u_prev = u;
+        ut = u+v;
+        ut(1:n) = rho_x*ut(1:n);
+        ut(1:n+m) = ut(1:n+m) - ut(end)*h;
+        ut(1:n+m) = ut(1:n+m) - h*((g'*ut(1:n+m))/(gTh+1));
+        warm_start = u(1:n+m);
+        ut(n+1:end-1) = -ut(n+1:end-1);
+        [ut(1:n+m), itn] = solve_lin_sys(work, data, ut(1:n+m), n, m, warm_start, rho_x, i, use_indirect, cg_rate, extra_verbose);
+        ut(end) = (ut(end) + h'*ut(1:n+m));
+
+        %% K proj:
+        rel_ut = alpha*ut+(1-alpha)*u;
+        rel_ut(1:n) = ut(1:n); % don't relax 'x' variable
+        u = rel_ut - v;
+        u(n+1:n+m) = proj_dual_cone(u(n+1:n+m),K);
+        u(l) = max(u(l),0);
+
+        %% dual update:
+        v = v + (u - rel_ut);
+        
+        if line_search
+            u_h = u;
+            ut = ut;
+            u = u;
+            v = v;
+        end
+        if i < debugT
+            stats.uts(i+1,:) = ut;
+            stats.us(i+1,:) = u;
+            stats.vs(i+1,:) = v;
+        end
+    else
+        eps = 0.00001;
+        normOld = inf;
+        
+        %getLineSearchDirection(work, iter)
+        	dir = 2*u_h - u - ut;
+            %projectLinSysTo(work, dir, i);
+                dir(1:n) = rho_x*dir(1:n);
+                dir(1:n+m) = dir(1:n+m) - dir(end)*h;
+                dir(1:n+m) = dir(1:n+m) - h*((g'*dir(1:n+m))/(gTh+1));
+                %WHY THIS?
+                warm_start = dir(1:n+m);
+                dir(n+1:end-1) = -dir(n+1:end-1);
+                [dir(1:n+m), itn] = solve_lin_sys(work, data, dir(1:n+m), n, m, warm_start, rho_x, i, use_indirect, cg_rate, extra_verbose);
+                dir(end) = (dir(end) + h'*dir(1:n+m));
+
+            %/* d = alpha*d + ( 1-alpha )( u_h - u ) */
+            dir = alpha*dir + ( 1-alpha )*( u_h -u );
+
+        %Backup ut, u_h, u, v
+        utb = ut;
+        u_hb = u_h;
+        u_b = u;
+        v_b = v;
+
+        t = 1.0;
+        maxLs = 1;
+        for j = 0:maxLs-1 
+            if j > 0
+                ut = utb;
+                u_h = u_hb;
+                u = u_b;
+                v = v_b;
+            end
+            %TRY LINE STEP START
+                u = u + t*( u_h - u); 
+                v = v + t*( u_h - ut);
+                ut = ut + t*dir;
+                %u_h = coneProj( u_t - v ) */
+                u_h = ut-v;
+                %u_h = projectConesTo(w, k, w->u_h, iter)
+                    %projectConesTo START
+                        u_h(n+1:n+m) = proj_dual_cone(u_h(n+1:n+m),K);
+                        u_h(l) = max(u_h(l),0);
+                %/* norm = ||(u_h - u , u_h - ut)|| */
+                nrm = sum((u_h-u).^2 + (u_h-ut).^2);
+            %TRY LINE STEP END
+            if (j == 0)
+                nrm = nrm*( 1 - eps );
+            end
+            if ( nrm < normOld && j > 0) 
+                normOld = nrm;
+                'Jumping at '
+                i
+                % We found a spot, set tBest, and so on 
+                break;
+            end
+            if ( j == maxLs ) 
+                t = 1;
+                %/* Didn't find anything, fall back on length 1 */
+                %/* TODO save the values for efficiency */
+                %/* Restore old vals */
+                ut = utb;
+                u_h = u_hb;
+                u = u_b;
+                v = v_b;
+                %TRY LINE STEP START
+                    u = u + t*( u_h - u); 
+                    v = v + t*( u_h - ut);
+                    ut = ut + t*dir;
+                    %u_h = coneProj( u_h - v ) */
+                    u_h = ut-v;
+                    %u_h = projectConesTo(w, k, w->u_h, iter)
+                        %projectConesTo START
+                            u_h(n+1:n+m) = proj_dual_cone(u_h(n+1:n+m),K);
+                            u_h(l) = max(u_h(l),0);
+                    %/* norm = ||(u_h - u , u_h - ut)|| */
+                    nrm = sum((u_h-u).^2 + (u_h-ut).^2);
+                %TRY LINE STEP END
+            end
+            t = t*2;
+        end
+        if i < debugT
+            stats.uts(i+1,:) = ut;
+            stats.u_hs(i+1,:) = u_h;
+            stats.us(i+1,:) = u;
+            stats.vs(i+1,:) = v;
+            stats.ds(i+1,:) = dir;
+        end
+        
+    end
     % ergodic behavior
     u_bar = (u + u_bar * i) / (i+1);
     ut_bar = (ut + ut_bar * i) / (i+1);
