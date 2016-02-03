@@ -416,13 +416,13 @@ static void getInfo(Work * w, Sol * sol, Info * info, struct residuals * r, scs_
         info->resDual = r->resDual;
         info->pobj = r->cTx_by_tau / r->tau;
         info->dobj = -r->bTy_by_tau / r->tau;
-    } else if (isUnboundedStatus(info->statusVal)) {
+    } else if (isUnboundedStatus(info->statusVal)) { 
         info->relGap = NAN;
         info->resPri = NAN;
         info->resDual = NAN;
         info->pobj = -INFINITY;
         info->dobj = -INFINITY;
-    } else if (isInfeasibleStatus(info->statusVal)) {
+    } else if (isInfeasibleStatus(info->statusVal)) { 
         info->relGap = NAN;
         info->resPri = NAN;
         info->resDual = NAN;
@@ -1022,7 +1022,7 @@ Work * scs_init(const Data * d, const Cone * k, Info * info) {
 	w = initWork(d, k);
 	/* strtoc("init", &initTimer); */
 	info->setupTime = tocq(&initTimer);
-	if (d->stgs->verbose) { scs_printf("Setup time: %1.2es\n", info->setupTime / 1e3); }
+	if (d->stgs->verbose) { scs_printf("Setup time: %1.2es\n", info->setupTime / 1e3); } 
     endInterruptListener();
 	RETURN w;
 }
@@ -1040,11 +1040,12 @@ scs_int scs(const Data * d, const Cone * k, Sol * sol, Info * info) {
 	scs_printf("size of scs_int = %lu, size of scs_float = %lu\n", sizeof(scs_int), sizeof(scs_float));
 #endif
 	if (w) {
-        scs_solve(w, d, k, sol, info);
+        scs_solve(w, d, k, sol, info); 
         status = info->statusVal;
-    } else {
+    } else { 
         status = failure(SCS_NULL, d ? d->m : -1, d ? d->n : -1, sol, info, SCS_FAILED, "could not initialize work", "Failure");
 	}
 	scs_finish(w);
 	RETURN status;
 }
+
