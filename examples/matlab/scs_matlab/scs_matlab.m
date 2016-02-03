@@ -143,7 +143,7 @@ u_bar = u;
 ut_bar = u;
 v_bar = v;
 
-debugT = 6;
+debugT = 20;
 stats = struct();
 stats.uts = zeros(debugT,l);
 stats.us = zeros(debugT,l);
@@ -158,6 +158,7 @@ for i=0:max_iters-1
         
         if line_search
             uold = u;
+            vold = v;
         end
         % solve linear system
         u_prev = u;
@@ -183,8 +184,8 @@ for i=0:max_iters-1
         if line_search
             u_h = u;
             ut = ut;
-            u = u;
-            v = v;
+            u = uold;
+            v = vold;
         end
         if i < debugT
             stats.uts(i+1,:) = ut;
@@ -218,13 +219,13 @@ for i=0:max_iters-1
 
         t = 1.0;
         maxLs = 1;
-        for j = 0:maxLs-1 
-            if j > 0
-                ut = utb;
-                u_h = u_hb;
-                u = u_b;
-                v = v_b;
-            end
+%         for j = 0:maxLs-1 
+%             if j > 0
+%                 ut = utb;
+%                 u_h = u_hb;
+%                 u = u_b;
+%                 v = v_b;
+%             end
             %TRY LINE STEP START
                 u = u + t*( u_h - u); 
                 v = v + t*( u_h - ut);
@@ -238,41 +239,41 @@ for i=0:max_iters-1
                 %/* norm = ||(u_h - u , u_h - ut)|| */
                 nrm = sum((u_h-u).^2 + (u_h-ut).^2);
             %TRY LINE STEP END
-            if (j == 0)
-                nrm = nrm*( 1 - eps );
-            end
-            if ( nrm < normOld && j > 0) 
-                normOld = nrm;
-                'Jumping at '
-                i
-                % We found a spot, set tBest, and so on 
-                break;
-            end
-            if ( j == maxLs ) 
-                t = 1;
-                %/* Didn't find anything, fall back on length 1 */
-                %/* TODO save the values for efficiency */
-                %/* Restore old vals */
-                ut = utb;
-                u_h = u_hb;
-                u = u_b;
-                v = v_b;
-                %TRY LINE STEP START
-                    u = u + t*( u_h - u); 
-                    v = v + t*( u_h - ut);
-                    ut = ut + t*dir;
-                    %u_h = coneProj( u_h - v ) */
-                    u_h = ut-v;
-                    %u_h = projectConesTo(w, k, w->u_h, iter)
-                        %projectConesTo START
-                            u_h(n+1:n+m) = proj_dual_cone(u_h(n+1:n+m),K);
-                            u_h(l) = max(u_h(l),0);
-                    %/* norm = ||(u_h - u , u_h - ut)|| */
-                    nrm = sum((u_h-u).^2 + (u_h-ut).^2);
-                %TRY LINE STEP END
-            end
-            t = t*2;
-        end
+%             if (j == 0)
+%                 nrm = nrm*( 1 - eps );
+%             end
+%             if ( nrm < normOld && j > 0) 
+%                 normOld = nrm;
+%                 'Jumping at '
+%                 i
+%                 % We found a spot, set tBest, and so on 
+%                 break;
+%             end
+%             if ( j == maxLs ) 
+%                 t = 1;
+%                 %/* Didn't find anything, fall back on length 1 */
+%                 %/* TODO save the values for efficiency */
+%                 %/* Restore old vals */
+%                 ut = utb;
+%                 u_h = u_hb;
+%                 u = u_b;
+%                 v = v_b;
+%                 %TRY LINE STEP START
+%                     u = u + t*( u_h - u); 
+%                     v = v + t*( u_h - ut);
+%                     ut = ut + t*dir;
+%                     %u_h = coneProj( u_h - v ) */
+%                     u_h = ut-v;
+%                     %u_h = projectConesTo(w, k, w->u_h, iter)
+%                         %projectConesTo START
+%                             u_h(n+1:n+m) = proj_dual_cone(u_h(n+1:n+m),K);
+%                             u_h(l) = max(u_h(l),0);
+%                     %/* norm = ||(u_h - u , u_h - ut)|| */
+%                     nrm = sum((u_h-u).^2 + (u_h-ut).^2);
+%                 %TRY LINE STEP END
+%             end
+%             t = t*2;
+%         end
         if i < debugT
             stats.uts(i+1,:) = ut;
             stats.u_hs(i+1,:) = u_h;
