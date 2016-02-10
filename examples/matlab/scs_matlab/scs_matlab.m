@@ -150,15 +150,6 @@ z_bar = z;
 utBest = 0*u;
 utdir = 0*u;
 
-debugT = 20;
-stats = struct();
-stats.uts = zeros(debugT,l);
-stats.us = zeros(debugT,l);
-stats.vs = zeros(debugT,l);
-if line_search
-    stats.u_hs = zeros(debugT,l);
-    stats.ds = zeros(debugT,l);
-end
 tic
 for i=0:max_iters-1
     if (~line_search)
@@ -182,12 +173,6 @@ for i=0:max_iters-1
         z = z + alpha*(u - ut);
         
         v = -(ut-z);
-        
-        if i < debugT
-            stats.uts(i+1,:) = ut;
-            stats.us(i+1,:) = u;
-            stats.vs(i+1,:) = v;
-        end
     else
         normEps = 0.00001;
         u_prev = ut;
@@ -241,39 +226,34 @@ for i=0:max_iters-1
         norm1 = (1-normEps)*sqrt(2)*norm(alpha*(u - utNew));
         %%END Get t=1 step length
         
-        Nts = 10;
-        ts = logspace(0.5,0,Nts);
-        normSaves = Inf*ones(Nts,1);
-        normSaves(end) = norm1;
+        Nts = 20;                       % How many (maximum steps to evaluate)
+        ts = logspace(2,0,Nts);         % Which t to evaluate
+        ts(end) = 1.0;                  % Always account for step t=1
+        normSaves = Inf*ones(Nts,1);    % Costs are Inf if not changed
+        normSaves(end) = norm1;         % Cost for t=1 is already known
         for j = 1:(Nts-1)
             % %%%%%%%% START TEST STEP
             t = ts(j);
-            zNew = z_prev + t*zdir;
-            utNew = ut +t*utdir;
+            zNew = z_prev + t*zdir;     %z at test point
+            utNew = ut +t*utdir;        %ut at test point
             u = 2*utNew - zNew;
             u(n+1:n+m) = proj_dual_cone(u(n+1:n+m),K);
-            u(l) = max(u(l),0);
+            u(l) = max(u(l),0);         %u after step at test point
             % %%%%%%%% END TEST STEP
-            normt = sqrt(2)*norm(alpha*(u - utNew));
-            normSaves(j) = normt;
-            if normt < norm1
-                break
+            normt = sqrt(2)*norm(alpha*(u - utNew));    %Calculate the step length
+            normSaves(j) = normt;       %Save it to the list
+            takeLongestStep = false;
+            if takeLongestStep          %Optionally stop searching when a step is found
+                if normt < norm1
+                   break
+                end
             end
         end
-        [Y,I] = min(normSaves);
+        [Y,I] = min(normSaves);         %Get the step with the smallest norm (non evaluated are Inf)
         t = ts(I);
-        utBest =  ut +t*utdir;
-        allTs(i+1) = t;
-        z = z_prev + t*zdir;
-        if i < debugT
-%             stats.uts(i+1,:) = ut;
-%             stats.u_hs(i+1,:) = u_h;
-%             stats.us(i+1,:) = u;
-%             stats.vs(i+1,:) = v;
-%             stats.ds(i+1,:) = dir;
-        end
-        
-        
+        utBest =  ut +t*utdir;          %Set u to this step length
+        allTs(i+1) = t;                 %Save t to global var
+        z = z_prev + t*zdir;            %Set z to this step length
     end
     % ergodic behavior
     u_bar = (u + u_bar * i) / (i+1);
