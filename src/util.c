@@ -119,6 +119,7 @@ void printData(const Data * d) {
 	scs_printf("verbose = %i\n", (int) d->stgs->verbose);
 	scs_printf("normalize = %i\n", (int) d->stgs->normalize);
 	scs_printf("warmStart = %i\n", (int) d->stgs->warm_start);
+	scs_printf("lineSearch = %i\n", (int) d->stgs->line_search);
 	scs_printf("eps = %4f\n", d->stgs->eps);
 	scs_printf("alpha = %4f\n", d->stgs->alpha);
 	scs_printf("rhoX = %4f\n", d->stgs->rho_x);
@@ -193,5 +194,6 @@ void setDefaultSettings(Data * d) {
     d->stgs->verbose = VERBOSE; /* boolean, write out progress: 1 */
     d->stgs->normalize = NORMALIZE; /* boolean, heuristic data rescaling: 1 */
     d->stgs->warm_start = WARM_START;
+    d->stgs->line_search = LINE_SEARCH; /* boolean, perform line search: 0 */
 }
 

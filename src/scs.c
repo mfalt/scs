@@ -51,6 +51,16 @@ static void freeWork(Work * w) {
         scs_free(w->pr);
     if (w->dr)
         scs_free(w->dr);
+    if (w->z)
+        scs_free(w->z);
+    if (w->z_prev)
+        scs_free(w->z_prev);
+    if (w->z_dir)
+        scs_free(w->z_dir);
+    if (w->u_tdir)
+        scs_free(w->u_tdir);
+    if (w->u_topt)
+        scs_free(w->u_topt);
     if (w->scal) {
         if (w->scal->D)
             scs_free(w->scal->D);
@@ -235,8 +245,12 @@ static void coldStartVars(Work * w) {
 	scs_int l = w->n + w->m + 1;
 	memset(w->u, 0, l * sizeof(scs_float));
 	memset(w->v, 0, l * sizeof(scs_float));
+	memset(w->z, 0, l * sizeof(scs_float));
+	memset(w->u_t, 0, l * sizeof(scs_float));
 	w->u[l - 1] = SQRTF((scs_float) l);
 	w->v[l - 1] = SQRTF((scs_float) l);
+	w->z[l - 1] = SQRTF((scs_float) l);
+	w->u_t[l - 1] = SQRTF((scs_float) l);
     RETURN;
 }
 
@@ -685,6 +699,11 @@ static Work * initWork(const Data *d, const Cone * k) {
 	w->dr = scs_malloc(d->n * sizeof(scs_float));
 	w->b = scs_malloc(d->m * sizeof(scs_float));
 	w->c = scs_malloc(d->n * sizeof(scs_float));
+	w->z = scs_malloc(l * sizeof(scs_float));
+	w->z_prev = scs_malloc(l * sizeof(scs_float));
+	w->z_dir = scs_malloc(l * sizeof(scs_float));
+	w->u_tdir = scs_malloc(l * sizeof(scs_float));
+	w->u_topt = scs_malloc(l * sizeof(scs_float));
 	if (!w->u || !w->v || !w->u_t || !w->u_prev || !w->h || !w->g || !w->pr || !w->dr || !w->b || !w->c) {
 		scs_printf("ERROR: work memory allocation failure\n");
 		RETURN SCS_NULL;
@@ -762,6 +781,132 @@ static scs_int updateWork(const Data * d, Work * w, const Sol * sol) {
 	RETURN 0;
 }
 
+static scs_int projectLinSysTo(Work * w, scs_float * vec, scs_int iter) {
+	DEBUG_FUNC
+	scs_int status;
+	scs_int n = w->n, m = w->m, l = n + m + 1;
+	/* vec = proj(vec) */
+	scaleArray(vec, w->stgs->rho_x, n);
+
+	addScaledArray(vec, w->h, l - 1, -vec[l - 1]);
+	addScaledArray(vec, w->h, l - 1, -innerProd(vec, w->g, l - 1) / (w->gTh + 1));
+	scaleArray(&(vec[n]), -1, m);
+
+	/* Remember do add warm start */
+	status = solveLinSys(w->A, w->stgs, w->p, vec, SCS_NULL, iter);
+
+	vec[l - 1] += innerProd(vec, w->h, l - 1);
+
+	RETURN status;
+}
+
+static scs_int projectConesTo(Work * w, const Cone * k, scs_float * vec, scs_int iter) {
+	DEBUG_FUNC
+	scs_int n = w->n, l = n + w->m + 1, status;
+	/* Remember warm start */
+	status = projDualCone(&(vec[n]), k, w->coneWork, NULL, iter);
+	if (vec[l - 1] < 0.0)
+		vec[l - 1] = 0.0;
+
+	RETURN status;
+}
+
+scs_float tryLineStep(Work * w, const Cone * k, scs_float t, scs_int iter) {
+	DEBUG_FUNC
+	scs_int l = w->n + w->m + 1;
+	scs_int i;
+	scs_float norm = 0.0;
+
+	/* u = 2( u_t + t*u_tdir ) - ( z_prev + t*z_dir ) */
+	memcpy(w->u, w->u_t, l * sizeof(scs_float));
+	scaleArray(w->u, 2, l);
+	addScaledArray(w->u, w->u_tdir, l, 2*t);
+	addScaledArray(w->u, w->z_prev, l, -1);
+	addScaledArray(w->u, w->z_dir, l, -t);
+
+	if (projectConesTo(w, k, w->u, iter) < 0) {
+		/* TODO Figure out failure handling
+		RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectConesTo in line search", "Failure");
+		*/
+	}
+	/* norm = || u - (u_t + t*u_tdir) || */
+	for (i = 0; i < l; ++i) {
+		norm += (w->u[i] - w->u_t[i] - t*w->u_tdir[i])*(w->u[i] - w->u_t[i] - t*w->u_tdir[i]);
+	}
+	RETURN norm;
+}
+
+
+scs_int scs_lineSearch(Work * w,  scs_int iter, const Cone * k, Sol * sol, Info * info) {
+	DEBUG_FUNC
+	scs_int l = w->n + w->m + 1;
+	const scs_float eps = 0.00001;
+	scs_int i;
+	scs_float norm, norm1;
+
+	/* Save for later */
+	memcpy(w->z_prev, w->z, l * sizeof(scs_float));
+
+	if ( iter == 0) {
+		/* memcpy(w->warm_start, w->u_t, l * sizeof(scs_float)); */
+		/* ut = projLinSys(z)*/
+		memcpy(w->u_t, w->z, l * sizeof(scs_float));
+		projectLinSysTo(w, w->u_t, iter);
+	} else {
+		memcpy(w->u_t, w->u_topt, l * sizeof(scs_float));
+	}
+
+	/* u = projCone( 2*ut - z ) */
+	memcpy(w->u, w->u_t, l * sizeof(scs_float));
+	scaleArray(w->u, 2, l);
+	addScaledArray(w->u, w->z, l, -1);
+	projectConesTo(w, k, w->u, iter);
+
+	/* z = z + alpha*( u - ut )*/
+	addScaledArray(w->z, w->u, l, w->stgs->alpha);
+	addScaledArray(w->z, w->u_t, l, - w->stgs->alpha);
+
+	/* Cheating to enable convergence check , v = -( ut - z ) */
+	memcpy(w->v, w->z, l * sizeof(scs_float));
+	addScaledArray(w->v, w->u, l, -1);
+
+	/* Save direction, zdir = alpha*( u- ut )*/
+	memcpy(w->z_dir, w->u, l * sizeof(scs_float));
+	scaleArray(w->z_dir, w->stgs->alpha, l);
+	addScaledArray(w->z_dir, w->u_t, l, - w->stgs->alpha);
+
+	/* Get linear direction u_tdir = projLinSys( z_dir )*/
+	memcpy(w->u_tdir, w->z_dir, l * sizeof(scs_float));
+	projectLinSysTo(w, w->u_tdir, iter);
+
+	/* Get t=1 step length */
+	norm1 = ( 1 - eps )*tryLineStep(w, k, 1.0, iter);
+
+	scs_float t = 1.0*pow(1.5, 10.0);
+	scs_int maxLs = 10;
+	for (i = 0; i < maxLs; ++i) {
+		norm = tryLineStep(w, k, t, iter);
+		if ( norm < norm1) {
+			/* We found a spot, set tBest, and so on */
+			break;
+		}
+		t = t/1.5;
+	}
+	scs_printf("\n T = %4f \n ", t);
+	/* u_topt = (u_t + t*u_tdir) */
+	memcpy(w->u_topt, w->u_t, l * sizeof(scs_float));
+	addScaledArray(w->u_topt, w->u_tdir, l, t);
+
+	/* z = (z_prev + t*z_dir) */
+	memcpy(w->z, w->z_prev, l * sizeof(scs_float));
+	addScaledArray(w->z, w->z_dir, l, t);
+
+	memcpy(w->u, w->u_t, l * sizeof(scs_float));
+	/* TODO Add a final "Free" iteration */
+	RETURN 0;
+}
+
+
 scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * info) {
     DEBUG_FUNC
 	scs_int i;
@@ -782,16 +927,22 @@ scs_int scs_solve(Work * w, const Data * d, const Cone * k, Sol * sol, Info * in
 		printHeader(w, k);
 	/* scs: */
 	for (i = 0; i < w->stgs->max_iters; ++i) {
-		memcpy(w->u_prev, w->u, (w->n + w->m + 1) * sizeof(scs_float));
+		if ( !w->stgs->line_search) {
+			memcpy(w->u_prev, w->u, (w->n + w->m + 1) * sizeof(scs_float));
 
-		if (projectLinSys(w, i) < 0) {
-			RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys", "Failure");
-        }
-		if (projectCones(w, k, i) < 0) {
-			RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectCones", "Failure");
-        }
+			if (projectLinSys(w, i) < 0) {
+				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectLinSys", "Failure");
+	        }
+			if (projectCones(w, k, i) < 0) {
+				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in projectCones", "Failure");
+	        }
 
-		updateDualVars(w);
+			updateDualVars(w);
+		} else {
+			if (scs_lineSearch(w, i, k, sol, info) < 0) {
+				RETURN failure(w, w->m, w->n, sol, info, SCS_FAILED, "error in Linesearch", "Failure");
+			}
+		}
 
 		if (isInterrupted()) {
 			RETURN failure(w, w->m, w->n, sol, info, SCS_SIGINT, "Interrupted", "Interrupted");
