@@ -53,8 +53,8 @@ data.c = c;
 %cd '../../matlab'; write_scs_data(data,K,params,'randomConeFeasible'); cd '../examples/matlab';
 
 params.line_search = 1;
-[xi_m,yi_m,si_m,infoi_m,statsls] = scs_matlab(data,K,params);
+[xi_m,yi_m,si_m,infoi_m] = scs_matlab(data,K,params);
 params.line_search = 0;
-[xd_m,yd_m,sd_m,infod_m,stats] = scs_matlab(data,K,params);
+[xd_m,yd_m,sd_m,infod_m] = scs_matlab(data,K,params);
 [c'*xi_m,(c'*xi_m - c'*x) / (c'*x), b'*yi_m, (b'*yi_m - b'*y) / (b'*y)]
 [c'*xd_m,(c'*xd_m - c'*x) / (c'*x), b'*yd_m, (b'*yd_m - b'*y) / (b'*y)]
