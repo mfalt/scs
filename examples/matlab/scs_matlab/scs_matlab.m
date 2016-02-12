@@ -1,4 +1,4 @@
-function [x,y,s,info,stats] = scs_matlab(data,K,params)
+function [x,y,s,info] = scs_matlab(data,K,params)
 % cone solver, solves:
 %
 % min. c'x
@@ -146,7 +146,6 @@ end
 u_bar = u;
 ut_bar = u;
 v_bar = v;
-z_bar = z;
 utBest = 0*u;
 utdir = 0*u;
 
@@ -255,22 +254,16 @@ for i=0:max_iters-1
     u_bar = (u + u_bar * i) / (i+1);
     ut_bar = (ut + ut_bar * i) / (i+1);
     v_bar = (v + v_bar * i) / (i+1);
+
     %% convergence checking:
-%     if (~line_search)
-%         tau = abs(u(end));
-%         kap = abs(v(end)) / (sc_b * sc_c * scale);
-% 
-%         x = u(1:n) / tau;
-%         y = u(n+1:n+m) / tau;
-%         s = v(n+1:n+m) / tau;
-%     else
-        u = ut;
-        tau = abs(u(end));
-        kap = abs(v(end)) / (sc_b * sc_c * scale);
-        x = u(1:n) / tau;
-        y = u(n+1:n+m) / tau;
-        s = v(n+1:n+m) / tau;
-%     end
+
+    u = ut;
+    tau = abs(u(end));
+    kap = abs(v(end)) / (sc_b * sc_c * scale);
+    x = u(1:n) / tau;
+    y = u(n+1:n+m) / tau;
+    s = v(n+1:n+m) / tau;
+
     err_pri = norm(D.*(data.A * x + s - data.b)) / (1 + nm_b) / (sc_b * scale);
     err_dual = norm(E.*(data.A' * y + data.c)) / (1 + nm_c) / (sc_c * scale);
     pobji = data.c' * x / (sc_c * sc_b * scale);
