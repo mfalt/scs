@@ -892,7 +892,6 @@ scs_int scs_lineSearch(Work * w,  scs_int iter, const Cone * k, Sol * sol, Info 
 		}
 		t = t/1.5;
 	}
-	scs_printf("\n T = %4f \n ", t);
 	/* u_topt = (u_t + t*u_tdir) */
 	memcpy(w->u_topt, w->u_t, l * sizeof(scs_float));
 	addScaledArray(w->u_topt, w->u_tdir, l, t);
