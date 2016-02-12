@@ -1,5 +1,4 @@
 function [x,y,s,info,stats] = scs_matlab(data,K,params)
-global allTs;
 % cone solver, solves:
 %
 % min. c'x
@@ -44,6 +43,7 @@ alpha = 1.5;        % relaxation parameter (alpha = 1 is unrelaxed)
 normalize = 1;      % heuristic normalization procedure
 scale = 1;          % heuristic re-scaline procedure
 rho_x = 1e-3;       % x equality rescaling
+line_search = 0;
 
 % conjugate gradient (CG) settings:
 use_indirect = false;   % use conjugate gradient rather than direct method
@@ -197,12 +197,9 @@ for i=0:max_iters-1
                     
         z = z + alpha*(u - ut);
         % %%%%%%%% END REAL STEP
-        v = -(ut-z);
+        v = -(ut-z);    %This enables us to use the ADMM convergence check?
         
         % Backup
-        utb = ut;
-        ub = u;
-        zb = z;
         zdir = alpha*(u - ut);
         
         % %%%%%%%% Get linear direction
@@ -252,7 +249,6 @@ for i=0:max_iters-1
         [Y,I] = min(normSaves);         %Get the step with the smallest norm (non evaluated are Inf)
         t = ts(I);
         utBest =  ut +t*utdir;          %Set u to this step length
-        allTs(i+1) = t;                 %Save t to global var
         z = z_prev + t*zdir;            %Set z to this step length
     end
     % ergodic behavior

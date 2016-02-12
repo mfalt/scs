@@ -11,7 +11,7 @@ for i=1:max_iters
     r=r-alpha*Ap;
     if norm(r)<tol
         if verbose
-            fprintf('CG took %i iterations to converge, resisdual %4f <= tolerance %4f\n',i,resid,tol)
+            fprintf('CG took %i iterations to converge, resisdual %10.2e <= tolerance %10.2e\n',i,norm(r),tol)
         end
         return;
     end

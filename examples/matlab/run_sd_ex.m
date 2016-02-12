@@ -11,10 +11,10 @@ QNu= Qu;
 Qw = 0;
 QNw= 0;
 
-T = 20;
+T = 40;
 x0 = [1 0 1 0];
-M = 1000;
-m = -1000;
+M = 100;
+m = -100;
 
 %12 elements [x1 x2 x3 x4 zx1 zx2 zx3 zx4 zu u1 u2 u3]
 % Au2 x + Bu2 u1 + Bb u3 = A0 x + B0 u1 + (A1-A0)zx + (B1-B0) zu + Bb u3
@@ -47,16 +47,15 @@ bineq = [bineq; M*ones(4,1)];
 Aineq = [Aineq; -eye(4) eye(4) zeros(4,2) -m*ones(4,1) zeros(4,1)];
 bineq = [bineq; -m*ones(4,1)];
 
-%TODO FIx this
 %Fix zu
-Aineq = [Aineq; zeros(4,4) eye(4) zeros(4,2) -M*ones(4,1) zeros(4,1)];
-bineq = [bineq; zeros(4,1)];
-Aineq = [Aineq; zeros(4,4) -eye(4) zeros(4,2) m*ones(4,1) zeros(4,1)];
-bineq = [bineq; zeros(4,1)];
-Aineq = [Aineq; eye(4) -eye(4) zeros(4,2) M*ones(4,1) zeros(4,1)];
-bineq = [bineq; M*ones(4,1)];
-Aineq = [Aineq; -eye(4) eye(4) zeros(4,2) -m*ones(4,1) zeros(4,1)];
-bineq = [bineq; -m*ones(4,1)];
+Aineq = [Aineq; zeros(1,8) 1 0 -1 0];
+bineq = [bineq; 0];
+Aineq = [Aineq; zeros(1,8) -1 0 (-1) 0];
+bineq = [bineq; 0];
+Aineq = [Aineq; zeros(1,8) -1 1 1 0];
+bineq = [bineq; 1];
+Aineq = [Aineq; zeros(1,8) 1 -1 -(-1) 0];
+bineq = [bineq; -(-1)];
 
 ineqs = size(Aineq,1);
 
@@ -76,28 +75,35 @@ s = 12*(T+1);
 
 fixAblock = [zeros(1,11) 1];
 fixBblock = [0];
-fixA = zeros(T+1,12);
+fixA = zeros(T+1,12*(T+1));
 fixB = zeros(T+1,1);
 for i = 1:T+1
     fixA(i,12*(i-1)+1:12*i) = fixAblock;
     fixB(i,1) = fixBblock;
 end
 
-fixA2block = [zeros(1,10) 1 0];
-fixB2block = [0];
-fixA2 = zeros(T+1,12);
-fixB2 = zeros(T+1,1);
-for i = 1:T+1
-    fixA2(i,12*(i-1)+1:12*i) = fixA2block;
-    fixB2(i,1) = fixB2block;
-end
+T2 = 10;
+ fixA2block = [zeros(1,10) 1 0];
+ fixB2block = [1];
+ fixA2 = zeros(T2+1,12*(T+1));
+ fixB2 = zeros(T2+1,1);
+ for i = 1:(T2+1)
+     fixA2(i,12*(i-1)+1:12*i) = fixA2block;
+    if i< 20 || i > 21
+        fixB2(i,1) = fixB2block;
+    else
+        fixB2(i,1) = 0;
+    end
+ end
 
 cvx_begin
     variable x(s)
+    %cvx_solver('SDPT3')
+    cvx_solver('scs_matlab')
     minimize(quad_form(x,Q))
     subject to
         AEq * x == bEq
         fixA * x == fixB
-        fixA2 * x == fixB2
+        %fixA2 * x == fixB2
         CA*x <= CB
 cvx_end
