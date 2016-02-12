@@ -30,7 +30,6 @@ extern "C" {
 #define VERBOSE         (1)
 #define NORMALIZE       (1)
 #define WARM_START      (0)
-#define LINE_SEARCH     (0)
 
 #ifdef __cplusplus
 }
