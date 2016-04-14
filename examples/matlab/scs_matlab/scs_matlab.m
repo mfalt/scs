@@ -119,9 +119,7 @@ else
 end
 
 h = [data.c;data.b];
-[g, itn] = solve_lin_sys(work,data,h,n,m,zeros(n,1),rho_x,-1,use_indirect,cg_rate,extra_verbose);
-g(n+1:end) = -g(n+1:end);
-gTh = g'*h;
+[g, gTh, ~] = solve_for_g(work,data,h,n,m,rho_x,use_indirect,cg_rate,extra_verbose);
 
 % u = [x;z;tau], v = [y;s;kappa]
 fprintf('Iter:\t      pres      dres       gap      pobj      dobj   unb_res   inf_res   kap/tau  time (s)\n');
@@ -152,26 +150,40 @@ utdir = 0*u;
 tic
 for i=0:max_iters-1
     if (~line_search)
-        u_prev = ut;
-        warm_start = ut(1:n+m);
-        ut = z;
-        ut(1:n) = rho_x*ut(1:n);
-        ut(1:n+m) = ut(1:n+m) - ut(end)*h;
-        ut(1:n+m) = ut(1:n+m) - h*((g'*ut(1:n+m))/(gTh+1));
-        ut(n+1:end-1) = -ut(n+1:end-1);
-        [ut(1:n+m), itn] = solve_lin_sys(work, data, ut(1:n+m), n, m, warm_start, rho_x, i, use_indirect, cg_rate, extra_verbose);
-        ut(end) = (ut(end) + h'*ut(1:n+m));
+        %Previous implementation
+        % u_prev = ut;
+        % warm_start = ut(1:n+m);
+        % ut = z;
+        % ut(1:n) = rho_x*ut(1:n);
+        % ut(1:n+m) = ut(1:n+m) - ut(end)*h;
+        % ut(1:n+m) = ut(1:n+m) - h*((g'*ut(1:n+m))/(gTh+1));
+        % ut(n+1:end-1) = -ut(n+1:end-1);
+        % [ut(1:n+m), itn] = solve_lin_sys(work, data, ut(1:n+m), n, m, warm_start, rho_x, i, use_indirect, cg_rate, extra_verbose);
+        % ut(end) = (ut(end) + h'*ut(1:n+m));
+        % 
+        % %u = coneProj(z) */
+        %     u = 2*ut - z;
+        %     %u_h = projectConesTo(w, k, w->u_h, iter)
+        %         %projectConesTo START
+        %             u(n+1:n+m) = proj_dual_cone(u(n+1:n+m),K);
+        %             u(l) = max(u(l),0);
+        %             
+        % z = z + alpha*(u - ut);
+        % 
+        % v = -(ut-z);
         
-        %u = coneProj(z) */
-            u = 2*ut - z;
-            %u_h = projectConesTo(w, k, w->u_h, iter)
-                %projectConesTo START
-                    u(n+1:n+m) = proj_dual_cone(u(n+1:n+m),K);
-                    u(l) = max(u(l),0);
-                    
-        z = z + alpha*(u - ut);
+        % solve linear system
+        u_prev = u;
+        [ut, itn] = project_lin_sys(work, data, n, m, u, v, rho_x, i, use_indirect, cg_rate, extra_verbose,  h, g, gTh);
+        %% K proj:
+        rel_ut = alpha*ut+(1-alpha)*u;
+        rel_ut(1:n) = ut(1:n); % don't relax 'x' variable
+        u = rel_ut - v;
+        u(n+1:n+m) = proj_dual_cone(u(n+1:n+m),K);
+        u(l) = max(u(l),0);
         
-        v = -(ut-z);
+        %% dual update:
+        v = v + (u - rel_ut);
     else
         normEps = 0.00001;
         u_prev = ut;
@@ -250,6 +262,7 @@ for i=0:max_iters-1
         utBest =  ut +t*utdir;          %Set u to this step length
         z = z_prev + t*zdir;            %Set z to this step length
     end
+
     % ergodic behavior
     u_bar = (u + u_bar * i) / (i+1);
     ut_bar = (ut + ut_bar * i) / (i+1);
