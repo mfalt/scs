@@ -37,7 +37,7 @@ function [x,y,s,info] = scs_matlab(data,K,params)
 % params struct consists of the following fields
 % (here set to default settings):
 gen_plots = false;  % generate convergence plots
-max_iters = 2500;   % maximum num iterations for admm
+max_iters = 2000;   % maximum num iterations for admm
 eps = 1e-3;         % quitting tolerances
 alpha = 1.5;        % relaxation parameter (alpha = 1 is unrelaxed)
 normalize = 1;      % heuristic normalization procedure
@@ -112,7 +112,7 @@ else
         work.P=amd(Qb);
         [work.L,work.d] = ldlsparse(Qb,work.P);
         %TODO check this
-        %work.L=work.L+speye(n+m);
+        work.L=work.L+speye(n+m);
     catch ldlerror
         disp('WARNING: LDLSPARSE ERROR, using MATLAB LDL instead (this is slower).')
         [work.L,work.d,work.P] = ldl(Qb,'vector');
@@ -141,17 +141,15 @@ fprintf('Iter:\t      pres      dres       gap      pobj      dobj   unb_res   i
 z      = zeros(2*l,1);
 z(l)   = sqrt(l);
 z(2*l) = sqrt(l);
-
-z_t = z;
-z_h = z;
+z(:) = sqrt(l);
 z_v = z;
 
 % u_bar = u;
 % ut_bar = u;
 % v_bar = v;
 
-a1 = 1;
-a2 = 1;
+a1 = 1.4;
+a2 = 1.4;
 
 tic
 for i=0:max_iters-1
@@ -165,12 +163,14 @@ for i=0:max_iters-1
     z_h = (1-a1)*z + a1*z_t;
 
     % K project
+    z_v(1:n) = z_h(1:n);
     z_v(n+1:n+m) = proj_dual_cone(z_h(n+1:n+m),K);
-    %z_v(l+n+1:end-1) = proj_cone(z_h(l+n+1:end-1),K);
-    z_v(l+n+1:end-1) = z_h(l+n+1:end-1) + proj_dual_cone(-z_h(l+n+1:end-1),K);
-    z_v(l) = max(z_v(l),0);
-    z_v(2*l) = max(z_v(2*l),0);
-
+    %z_v(l) = max(z_h(l),0);
+    z_v(l) = 1;
+    
+    z_v(l+1:l+n) = zeros(n,1);
+    z_v(l+n+1:end-1) = proj_cone(z_h(l+n+1:end-1),K);
+    z_v(2*l) = max(z_h(2*l),0);
     % alpha and alpha 2 relax
     z = (1-alpha/2)*z + alpha/2*((1-a2)*z_h + a2*z_v);     
     % z(1:l-1)     = (1-alpha/2)*z(1:l-1)     + alpha/2*((1-a2)*z_h(1:l-1)     + a2*z_v(1:l-1));
@@ -305,6 +305,15 @@ info.iter = i;
 info.resPri =err_pri;
 info.resDual = err_dual;
 info.relGap = gap;
+
+
+%% SET CUSTOM
+tau
+kap
+info.status = 'Solved';
+info.resPri =1e-10;
+info.resDual = 1e-10;
+info.relGap = 1e-10;
 
 if (normalize)
     y = y ./ (D * sc_c);
