@@ -105,8 +105,8 @@ if 0 %use_indirect
 %    work.M = 1 ./ diag(rho_x*speye(n) + data.A'*data.A); % pre-conditioner
 else
     %W=sparse([rho_x*speye(n) data.A';data.A -speye(m)]);
-    Q = sparse([zeros(n) data.A' data.c; -data.A zeros(m) data.b: -data.c' -data.b' 0])
-    Qb = [speye(l) Q': Q -speye(l)]
+    Q = sparse([zeros(n) data.A' data.c; -data.A zeros(m) data.b; -data.c' -data.b' 0]);
+    Qb = [speye(l) Q'; Q -speye(l)];
     disp('Factorization')
     try
         work.P=amd(Qb);
@@ -138,8 +138,8 @@ fprintf('Iter:\t      pres      dres       gap      pobj      dobj   unb_res   i
 %     u = zeros(l,1);u(end) = sqrt(l);
 %     v = zeros(l,1);v(end) = sqrt(l);
 % end
-z      = zeros(1,2*l);
-z(l)   = sqrt(l):
+z      = zeros(2*l,1);
+z(l)   = sqrt(l);
 z(2*l) = sqrt(l);
 
 z_t = z;
@@ -150,8 +150,8 @@ z_v = z;
 % ut_bar = u;
 % v_bar = v;
 
-a1 = 1.98;
-a2 = 1.98;
+a1 = 1;
+a2 = 1;
 
 tic
 for i=0:max_iters-1
@@ -159,20 +159,23 @@ for i=0:max_iters-1
     u_prev = z(1:l);
 
     % solve linear system
-    z_t = (w.L'\(w.d\(w.L\z(w.P))));
-    z_t(w.P) = z_t;
+    z_t = (work.L'\(work.d\(work.L\z(work.P))));
+    z_t(work.P) = z_t;
     % alpha 1 relax
     z_h = (1-a1)*z + a1*z_t;
 
     % K project
-    z_v(1:n+m) = proj_dual_cone(z_h(1:n+m),K);
-    z_v(l+1:end-1) = z_v(l+1:end-1) - proj_dual_cone(z_h(l+1:end-1),K);
+    z_v(n+1:n+m) = proj_dual_cone(z_h(n+1:n+m),K);
+    %z_v(l+n+1:end-1) = proj_cone(z_h(l+n+1:end-1),K);
+    z_v(l+n+1:end-1) = z_h(l+n+1:end-1) + proj_dual_cone(-z_h(l+n+1:end-1),K);
     z_v(l) = max(z_v(l),0);
     z_v(2*l) = max(z_v(2*l),0);
 
     % alpha and alpha 2 relax
-    z = (1-alpha/2)*z_k + alpha/2*((1-a2)*z_h + a2*z_v);
-
+    z = (1-alpha/2)*z + alpha/2*((1-a2)*z_h + a2*z_v);     
+    % z(1:l-1)     = (1-alpha/2)*z(1:l-1)     + alpha/2*((1-a2)*z_h(1:l-1)     + a2*z_v(1:l-1));
+    % z(l+1:2*l-1) = (1-alpha/2)*z(l+1:2*l-1) + alpha/2*((1-a2)*z_h(l+1:2*l-1) + a2*z_v(l+1:2*l-1));
+    
     % % solve linear system
     % u_prev = u;
     % [ut, itn] = project_lin_sys(work, data, n, m, u, v, rho_x, i, use_indirect, cg_rate, extra_verbose,  h, g, gTh);
