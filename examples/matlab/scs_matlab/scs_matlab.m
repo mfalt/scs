@@ -85,96 +85,132 @@ nm_b = norm(data.b);
 nm_c = norm(data.c);
 
 work = struct();
-if (normalize)
-    [data, work] = normalize_data(data, K, scale, work); % have to do this since matlab pass by val
-    D = work.D;
-    E = work.E;
-    sc_b = work.sc_b;
-    sc_c = work.sc_c;
-else
+% if (normalize)
+%     [data, work] = normalize_data(data, K, scale, work); % have to do this since matlab pass by val
+%     D = work.D;
+%     E = work.E;
+%     sc_b = work.sc_b;
+%     sc_c = work.sc_c;
+% else
     scale = 1;
     D = ones(m,1);
     E = ones(n,1);
     sc_b = 1;
     sc_c = 1;
-end
+% end
 
 
 %%
-if use_indirect
-    work.M = 1 ./ diag(rho_x*speye(n) + data.A'*data.A); % pre-conditioner
+if 0 %use_indirect
+%    work.M = 1 ./ diag(rho_x*speye(n) + data.A'*data.A); % pre-conditioner
 else
-    W=sparse([rho_x*speye(n) data.A';data.A -speye(m)]);
+    %W=sparse([rho_x*speye(n) data.A';data.A -speye(m)]);
+    Q = sparse([zeros(n) data.A' data.c; -data.A zeros(m) data.b: -data.c' -data.b' 0])
+    Qb = [speye(l) Q': Q -speye(l)]
     disp('Factorization')
     try
-        work.P=amd(W);
-        [work.L,work.d] = ldlsparse(W,work.P);
-        work.L=work.L+speye(n+m);
+        work.P=amd(Qb);
+        [work.L,work.d] = ldlsparse(Qb,work.P);
+        %TODO check this
+        %work.L=work.L+speye(n+m);
     catch ldlerror
         disp('WARNING: LDLSPARSE ERROR, using MATLAB LDL instead (this is slower).')
-        [work.L,work.d,work.P] = ldl(W,'vector');
+        [work.L,work.d,work.P] = ldl(Qb,'vector');
     end
 end
 
-h = [data.c;data.b];
-[g, gTh, ~] = solve_for_g(work,data,h,n,m,rho_x,use_indirect,cg_rate,extra_verbose);
+%h = [data.c;data.b];
+%[g, gTh, ~] = solve_for_g(work,data,h,n,m,rho_x,use_indirect,cg_rate,extra_verbose);
 
 % u = [x;z;tau], v = [y;s;kappa]
 fprintf('Iter:\t      pres      dres       gap      pobj      dobj   unb_res   inf_res   kap/tau  time (s)\n');
 
 % for warm-starting:
-if (nargin==3 && isfield(params,'warm_xy'))
-    u = [params.warm_xy;1];
-    v = [zeros(n,1);data.b*u(end) - data.A*u(1:n);0];
-    if (normalize)
-        u(1:n) = u(1:n) .* (E * sc_b);
-        u(n+1:n+m) = u(n+1:n+m) .* (D * sc_c);
-        v(n+1:n+m) = v(n+1:n+m) ./ (D / (sc_b * scale));
-    end
-else
-    u = zeros(l,1);u(end) = sqrt(l);
-    v = zeros(l,1);v(end) = sqrt(l);
-end
+% if (nargin==3 && isfield(params,'warm_xy'))
+%     u = [params.warm_xy;1];
+%     v = [zeros(n,1);data.b*u(end) - data.A*u(1:n);0];
+%     if (normalize)
+%         u(1:n) = u(1:n) .* (E * sc_b);
+%         u(n+1:n+m) = u(n+1:n+m) .* (D * sc_c);
+%         v(n+1:n+m) = v(n+1:n+m) ./ (D / (sc_b * scale));
+%     end
+% else
+%     u = zeros(l,1);u(end) = sqrt(l);
+%     v = zeros(l,1);v(end) = sqrt(l);
+% end
+z      = zeros(1,2*l);
+z(l)   = sqrt(l):
+z(2*l) = sqrt(l);
 
-u_bar = u;
-ut_bar = u;
-v_bar = v;
+z_t = z;
+z_h = z;
+z_v = z;
+
+% u_bar = u;
+% ut_bar = u;
+% v_bar = v;
+
+a1 = 1.98;
+a2 = 1.98;
 
 tic
 for i=0:max_iters-1
+    %TODO temporary convinience
+    u_prev = z(1:l);
+
     % solve linear system
-    u_prev = u;
-    [ut, itn] = project_lin_sys(work, data, n, m, u, v, rho_x, i, use_indirect, cg_rate, extra_verbose,  h, g, gTh);
-    %% K proj:
-    rel_ut = alpha*ut+(1-alpha)*u;
-    rel_ut(1:n) = ut(1:n); % don't relax 'x' variable
-    u = rel_ut - v;
-    u(n+1:n+m) = proj_dual_cone(u(n+1:n+m),K);
-    u(l) = max(u(l),0);
-    
-    %% dual update:
-    v = v + (u - rel_ut);
-    
-    % ergodic behavior
-    u_bar = (u + u_bar * i) / (i+1);
-    ut_bar = (ut + ut_bar * i) / (i+1);
-    v_bar = (v + v_bar * i) / (i+1);
+    z_t = (w.L'\(w.d\(w.L\z(w.P))));
+    z_t(w.P) = z_t;
+    % alpha 1 relax
+    z_h = (1-a1)*z + a1*z_t;
+
+    % K project
+    z_v(1:n+m) = proj_dual_cone(z_h(1:n+m),K);
+    z_v(l+1:end-1) = z_v(l+1:end-1) - proj_dual_cone(z_h(l+1:end-1),K);
+    z_v(l) = max(z_v(l),0);
+    z_v(2*l) = max(z_v(2*l),0);
+
+    % alpha and alpha 2 relax
+    z = (1-alpha/2)*z_k + alpha/2*((1-a2)*z_h + a2*z_v);
+
+    % % solve linear system
+    % u_prev = u;
+    % [ut, itn] = project_lin_sys(work, data, n, m, u, v, rho_x, i, use_indirect, cg_rate, extra_verbose,  h, g, gTh);
+    % %% K proj:
+    % rel_ut = alpha*ut+(1-alpha)*u;
+    % rel_ut(1:n) = ut(1:n); % don't relax 'x' variable
+    % u = rel_ut - v;
+    % u(n+1:n+m) = proj_dual_cone(u(n+1:n+m),K);
+    % u(l) = max(u(l),0);
+    %
+    % %% dual update:
+    % v = v + (u - rel_ut);
+
+    % % ergodic behavior
+    % u_bar = (u + u_bar * i) / (i+1);
+    % ut_bar = (ut + ut_bar * i) / (i+1);
+    % v_bar = (v + v_bar * i) / (i+1);
+
+    %TODO temporary convinience
+    u = z(1:l);
+    v = z(l+1:2*l);
+    ut = z_t(1:l);
 
     %% convergence checking:
     tau = abs(u(end));
     kap = abs(v(end)) / (sc_b * sc_c * scale);
-    
+
     x = u(1:n) / tau;
     y = u(n+1:n+m) / tau;
     s = v(n+1:n+m) / tau;
-    
+
     err_pri = norm(D.*(data.A * x + s - data.b)) / (1 + nm_b) / (sc_b * scale);
     err_dual = norm(E.*(data.A' * y + data.c)) / (1 + nm_c) / (sc_c * scale);
     pobji = data.c' * x / (sc_c * sc_b * scale);
     dobji = -data.b' * y / (sc_c * sc_b * scale);
-    
+
     gap = abs(pobji - dobji) / (1 + abs(pobji) + abs(dobji));
-    
+
     if (data.c'*u(1:n) < 0)
         unb_res = norm(E.*data.c) * norm(D.*(data.A * u(1:n) + v(n+1:n+m))) / (-data.c'*u(1:n)) / scale;
     else
@@ -193,26 +229,26 @@ for i=0:max_iters-1
     nms(idx,1) = err_pri;
     nms(idx,2) = err_dual;
     nms(idx,3) = gap;
-    
+
     pathol(idx,1) = unb_res;
     pathol(idx,2) = inf_res;
-    
+
     tau_i(idx) = ut(end);
     kap_i(idx) = v(end);
     pobj(idx) = pobji;
     dobj(idx) = dobji;
-    
+
     sum_nm2(idx,1) = norm(u - u_prev);
     sum_nm2(idx,2) = norm(u - ut);
-    
+
     solved = max(gap,max(err_pri,err_dual)) < eps;
     infeasible = inf_res < eps;
     unbounded = unb_res < eps;
-    
+
     if (mod(i,CONVERGED_INTERVAL)==0 && (solved || infeasible || unbounded))
         break
     end
-    
+
     if (mod(i,PRINT_INTERVAL)==0)
         ttime = toc;
         fprintf('%i:\t%10.2e%10.2e%10.2e%10.2e%10.2e%10.2e%10.2e%10.2e%10.2e\n',i,err_pri,err_dual,gap,pobji,dobji,unb_res,inf_res,kap/tau,ttime);
@@ -226,6 +262,12 @@ if (solved)
         dobji, norm(s - proj_cone(s,K)), norm(y - proj_dual_cone(y,K)), s'*y);
 end
 %%
+
+%TODO temporary convinience
+u = z(1:l);
+v = z(l+1:2*l);
+ut = z_t(1:l);
+
 tau = abs(u(end));
 kap = abs(v(end)) / (sc_b * sc_c * scale);
 
@@ -239,7 +281,7 @@ else
     x = nan(n,1);
     y = nan(m,1);
     s = nan(m,1);
-    
+
     x_h = u(1:n);
     y_h = u(n+1:n+m);
     s_h = v(n+1:n+m);
