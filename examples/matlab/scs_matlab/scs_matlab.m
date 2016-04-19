@@ -37,9 +37,9 @@ function [x,y,s,info] = scs_matlab(data,K,params)
 % params struct consists of the following fields
 % (here set to default settings):
 gen_plots = false;  % generate convergence plots
-max_iters = 2000;   % maximum num iterations for admm
+max_iters = 5000;   % maximum num iterations for admm
 eps = 1e-3;         % quitting tolerances
-alpha = 1.5;        % relaxation parameter (alpha = 1 is unrelaxed)
+alpha = 1.7;        % relaxation parameter (alpha = 1 is unrelaxed)
 normalize = 1;      % heuristic normalization procedure
 scale = 1;          % heuristic re-scaline procedure
 rho_x = 1e-3;       % x equality rescaling
@@ -148,8 +148,8 @@ z_v = z;
 % ut_bar = u;
 % v_bar = v;
 
-a1 = 1.4;
-a2 = 1.4;
+a1 = 2;
+a2 = 2;
 
 tic
 for i=0:max_iters-1
@@ -167,8 +167,8 @@ for i=0:max_iters-1
     % K project
     z_v(1:n) = z_h(1:n);
     z_v(n+1:n+m) = proj_dual_cone(z_h(n+1:n+m),K);
-    %z_v(l) = max(z_h(l),0);
-    z_v(l) = 1;
+    z_v(l) = max(z_h(l),0);
+    %z_v(l) = 1;
 
     z_v(l+1:l+n) = zeros(n,1);
     z_v(l+n+1:end-1) = proj_cone(z_h(l+n+1:end-1),K);
@@ -310,12 +310,12 @@ info.relGap = gap;
 
 
 %% SET CUSTOM
-tau
-kap
-info.status = 'Solved';
-info.resPri =1e-10;
-info.resDual = 1e-10;
-info.relGap = 1e-10;
+%tau
+%kap
+%info.status = 'Solved';
+%info.resPri =1e-10;
+%info.resDual = 1e-10;
+%info.relGap = 1e-10;
 
 if (normalize)
     y = y ./ (D * sc_c);
