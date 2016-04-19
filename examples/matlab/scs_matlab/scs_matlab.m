@@ -156,9 +156,11 @@ for i=0:max_iters-1
     %TODO temporary convinience
     u_prev = z(1:l);
 
-    % solve linear system
+    % solve linear system for u and mu
     z_t = (work.L'\(work.d\(work.L\z(work.P))));
     z_t(work.P) = z_t;
+    % Calculate v
+    z_t(l+1:2*l) = Q*z_t(1:l);
     % alpha 1 relax
     z_h = (1-a1)*z + a1*z_t;
 
@@ -167,15 +169,15 @@ for i=0:max_iters-1
     z_v(n+1:n+m) = proj_dual_cone(z_h(n+1:n+m),K);
     %z_v(l) = max(z_h(l),0);
     z_v(l) = 1;
-    
+
     z_v(l+1:l+n) = zeros(n,1);
     z_v(l+n+1:end-1) = proj_cone(z_h(l+n+1:end-1),K);
     z_v(2*l) = max(z_h(2*l),0);
     % alpha and alpha 2 relax
-    z = (1-alpha/2)*z + alpha/2*((1-a2)*z_h + a2*z_v);     
+    z = (1-alpha/2)*z + alpha/2*((1-a2)*z_h + a2*z_v);
     % z(1:l-1)     = (1-alpha/2)*z(1:l-1)     + alpha/2*((1-a2)*z_h(1:l-1)     + a2*z_v(1:l-1));
     % z(l+1:2*l-1) = (1-alpha/2)*z(l+1:2*l-1) + alpha/2*((1-a2)*z_h(l+1:2*l-1) + a2*z_v(l+1:2*l-1));
-    
+
     % % solve linear system
     % u_prev = u;
     % [ut, itn] = project_lin_sys(work, data, n, m, u, v, rho_x, i, use_indirect, cg_rate, extra_verbose,  h, g, gTh);
