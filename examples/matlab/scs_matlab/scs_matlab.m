@@ -38,7 +38,7 @@ function [x,y,s,info] = scs_matlab(data,K,params)
 % (here set to default settings):
 gen_plots = false;  % generate convergence plots
 max_iters = 5000;   % maximum num iterations for admm
-eps = 1e-3;         % quitting tolerances
+eps = 1e-5;         % quitting tolerances
 alpha = 1.7;        % relaxation parameter (alpha = 1 is unrelaxed)
 normalize = 1;      % heuristic normalization procedure
 scale = 1;          % heuristic re-scaline procedure
@@ -148,14 +148,14 @@ z_v = z;
 % ut_bar = u;
 % v_bar = v;
 
-a1 = 2;
-a2 = 2;
+a1 = 1.9999;
+a2 = 1.9999;
 
 tic
 for i=0:max_iters-1
     %TODO temporary convinience
     u_prev = z(1:l);
-
+    
     % solve linear system for u and mu
     z_t = (work.L'\(work.d\(work.L\z(work.P))));
     z_t(work.P) = z_t;
@@ -169,7 +169,7 @@ for i=0:max_iters-1
     z_v(n+1:n+m) = proj_dual_cone(z_h(n+1:n+m),K);
     z_v(l) = max(z_h(l),0);
     %z_v(l) = 1;
-
+    
     z_v(l+1:l+n) = zeros(n,1);
     z_v(l+n+1:end-1) = proj_cone(z_h(l+n+1:end-1),K);
     z_v(2*l) = max(z_h(2*l),0);
@@ -197,18 +197,26 @@ for i=0:max_iters-1
     % v_bar = (v + v_bar * i) / (i+1);
 
     %TODO temporary convinience
-    u = z(1:l);
-    v = z(l+1:2*l);
+    u = z_v(1:l);
+    v = z_v(l+1:2*l);
     ut = z_t(1:l);
 
     %% convergence checking:
-    tau = abs(u(end));
-    kap = abs(v(end)) / (sc_b * sc_c * scale);
+%     tau = abs(u(end));
+%     kap = abs(v(end)) / (sc_b * sc_c * scale);
 
-    x = u(1:n) / tau;
-    y = u(n+1:n+m) / tau;
-    s = v(n+1:n+m) / tau;
-
+%     x = u(1:n) / tau;
+%     y = u(n+1:n+m) / tau;
+%     s = v(n+1:n+m) / tau;
+    tau = z_v(l);
+    kap = z_v(2*l) / (sc_b * sc_c * scale);
+    
+    x = z_t(1:n) / tau;
+    s = z_v(l+n+1:l+n+m) / tau; %(z_v(n+1:n+m)-z_h(n+1:n+m)) / tau;
+    y = z_v(n+1:n+m) / tau;
+    %s'*y
+    %norm(z_v(l+n+1:l+n+m)-z_t(n+1:n+m))
+    
     err_pri = norm(D.*(data.A * x + s - data.b)) / (1 + nm_b) / (sc_b * scale);
     err_dual = norm(E.*(data.A' * y + data.c)) / (1 + nm_c) / (sc_c * scale);
     pobji = data.c' * x / (sc_c * sc_b * scale);
@@ -269,16 +277,23 @@ end
 %%
 
 %TODO temporary convinience
-u = z(1:l);
-v = z(l+1:2*l);
+u = z_v(1:l);
+v = z_v(l+1:2*l);
 ut = z_t(1:l);
 
-tau = abs(u(end));
-kap = abs(v(end)) / (sc_b * sc_c * scale);
+% tau = abs(u(end));
+% kap = abs(v(end)) / (sc_b * sc_c * scale);
+% 
+% x = u(1:n) / tau;
+% y = u(n+1:n+m) / tau;
+% s = v(n+1:n+m) / tau;
 
-x = u(1:n) / tau;
-y = u(n+1:n+m) / tau;
-s = v(n+1:n+m) / tau;
+    tau = z_v(l);
+    kap = z_v(2*l) / (sc_b * sc_c * scale);
+    
+    x = z_t(1:n) / tau;
+    s = z_v(l+n+1:l+n+m) / tau; %(z_v(n+1:n+m)-z_h(n+1:n+m)) / tau;
+    y = z_v(n+1:n+m) / tau;
 
 if (tau > UNDET_TOL && tau > kap) % this is different to Lieven
     status = 'Solved'
